@@ -118,7 +118,7 @@ class TagSectionReader(object):
         self.r = r
         self.offset = r.f.tell() + 8
         self.size = (r.readFormat(">I") & 0x3FFFFFFF) - 8
-        self.signature = r.f.read( 4 )
+        self.signature = r.f.read( 4 ).decode('unicode_escape')
         
         if not self.signature in signatures:
             raise ValueError( "Invalid signature, expected {}, got {}".format( ", ".join( signatures ), self.signature ) )
@@ -172,7 +172,7 @@ class TagReader(object):
         with open(inputFileName, "rb") as f:
             f.seek( 4 )
             
-            signature = f.read( 4 )
+            signature = f.read( 4 ).decode('unicode_escape')
             if ( signature == "TAG0" ):
                 return TagFileType.Object
             elif ( signature == "TCM0" ):
@@ -183,7 +183,7 @@ class TagReader(object):
     def readTypeSection(self):
         with TagSectionReader(self, "TYPE", "TCRF") as t1:
             if ( t1.signature == "TCRF" ):
-                compendiumId = self.f.read( 8 )
+                compendiumId = self.f.read( 8 ).decode()
                 
                 if ( self.compendium == None ):
                     raise ValueError( "Missing compendium, tag file cannot be parsed" )
@@ -198,17 +198,17 @@ class TagReader(object):
                 pass
                 
             with TagSectionReader(self, "TSTR") as t3:
-                typeStrings = self.f.read(t3.size).split("\0")
+                typeStrings = list(x.decode() for x in self.f.read(t3.size).split(b"\0"))
                 
             with TagSectionReader(self, "TNAM", "TNA1") as t4:
                 typeCount = self.readPacked()
-                self.types = [TagType() for x in xrange(typeCount)]
+                self.types = [TagType() for x in range(typeCount)]
                 self.types[0] = None
                 
                 for typ in self.types[1:]:
                     typ.name = typeStrings[self.readPacked()]
                     
-                    for i in xrange( self.readPacked() ):
+                    for i in range( self.readPacked() ):
                         template = TagTemplate( typeStrings[ self.readPacked() ], self.readPacked() )
                    
                         if template.isType:
@@ -217,7 +217,7 @@ class TagReader(object):
                         typ.templates.append(template)
                     
             with TagSectionReader(self, "FSTR") as t5:
-                fieldStrings = self.f.read(t5.size).split("\0")
+                fieldStrings = list(x.decode() for x in self.f.read(t5.size).split(b"\0"))
                 
             with TagSectionReader(self, "TBOD", "TBDY") as t6:
                 while not t6.end:
@@ -247,7 +247,7 @@ class TagReader(object):
                         typ.abstractValue = self.readPacked()
                     
                     if typ.flags & TagFlag.Members:
-                        for i in xrange( self.readPacked() ):
+                        for i in range( self.readPacked() ):
                             member = TagMember()
                             member.name = fieldStrings[self.readPacked()]
                             member.flags = self.readPacked()
@@ -258,13 +258,13 @@ class TagReader(object):
                     if typ.flags & TagFlag.Interfaces:
                         typ.interfaces = [
                         	(self.types[self.readPacked()], self.readPacked())
-                        	for x in xrange(self.readPacked())]
+                        	for x in range(self.readPacked())]
                         	
                     if typ.flags & TagFlag.Unknown:
                         raise ValueError("Flag 0x80 exists, handle it!")
             
             with TagSectionReader(self, "THSH") as t7:
-                for i in xrange( self.readPacked() ):
+                for i in range( self.readPacked() ):
                     typeIndex = self.readPacked()
                     self.types[typeIndex].hsh = self.readFormat("<I")
                     
@@ -290,7 +290,7 @@ class TagReader(object):
         with TagSectionReader(self, "TAG0", "TCM0") as t1:
             if ( t1.signature == "TAG0" ):
                 with TagSectionReader(self, "SDKV") as t2:
-                    version = self.f.read( 8 )
+                    version = self.f.read( 8 ).decode()
                     if ( version != "20160100" and version != "20160200" and version != "20150100" ):
                         raise ValueError("Invalid SDK version.")
                     
@@ -302,8 +302,8 @@ class TagReader(object):
                 
             elif ( t1.signature == "TCM0" ):
                 with TagSectionReader( self, "TCID" ) as t4:
-                    for i in xrange( t4.size / 8 ):
-                        self.ids.append( self.f.read( 8 ) )
+                    for i in range( t4.size / 8 ):
+                        self.ids.append( self.f.read( 8 ).decode() )
                     
                 self.readTypeSection()
     
@@ -371,7 +371,7 @@ class TagReader(object):
             
         elif typ.subType == TagSubType.Tuple:
             value = tuple([self.readObject(typ.pointer, offset + x * typ.pointer.superType.byteSize)
-            	for x in xrange(typ.tupleSize)])
+            	for x in range(typ.tupleSize)])
             	
         self.f.seek(offset + typ.byteSize)
         return TagObject(value, typOrg)
@@ -388,7 +388,7 @@ class TagReader(object):
             if item.value == None:
                 item.value = [self.readObject(item.typ,
                 	item.offset + x * item.typ.superType.byteSize)
-                	for x in xrange(item.count)]
+                	for x in range(item.count)]
                 
             return item.value
 
@@ -443,7 +443,7 @@ class TagReader(object):
         if item.value == None:
             item.value = [self.readObject(item.typ,
             	item.offset + x * item.typ.superType.byteSize)
-            	for x in xrange(item.count)]
+            	for x in range(item.count)]
             
         return item.value[0]
         
@@ -597,7 +597,7 @@ class TagWriter(object):
                    
             with TagSectionWriter(self, "PTCH") as t3:
                 patches = [(self.types.index(key), value)
-                	for key, value in self.patches.iteritems()]
+                	for key, value in list(self.patches.items())]
                	
                 patches.sort(key=lambda x: x[0])
                
@@ -643,7 +643,7 @@ class TagWriter(object):
                         self.pad(self.nextPowerOfTwo(item.typ.superType.alignment))
                         
                         item.offset = self.f.tell()
-                        for i in xrange( len(item.value) ):
+                        for i in range( len(item.value) ):
                             self.writeObject(item.value[i], item.offset + i * item.typ.superType.byteSize)
                         
                 self.pad(16)
@@ -678,17 +678,17 @@ class TagWriter(object):
         
         elif typ.subType == TagSubType.Class:
             for member in typ.allMembers:
-                if obj.value.has_key(member.name):
+                if member.name in obj.value:
                     self.writeObject(obj.value[member.name], offset + member.byteOffset)
             	
         elif typ.subType == TagSubType.Tuple:
-            for i in xrange(typ.tupleSize):
+            for i in range(typ.tupleSize):
                 self.writeObject(obj.value[i], offset + i * typ.pointer.superType.byteSize)
             
         self.f.seek(offset + typ.byteSize)
         
     def addPatch(self, typ):
-        if self.patches.has_key(typ):
+        if typ in self.patches:
             self.patches[typ].append(self.f.tell())
             
         else:
@@ -787,7 +787,7 @@ class TagWriter(object):
         
         elif obj.typ.superType.subType == TagSubType.Class:
             for member in obj.typ.allMembers:
-                if obj.value.has_key(member.name):
+                if member.name in obj.value:
                     self.scanObjectForType(obj.value[member.name])
                     
         elif obj.typ.superType.subType & 0xF == TagSubType.Array:
@@ -802,7 +802,7 @@ class TagWriter(object):
 class TagTypeHelper(object):
     @staticmethod
     def getAttrib(elem, name, default = None, method = None):
-        if elem.attrib.has_key(name):
+        if name in elem.attrib:
             attribValue = elem.attrib[name]
             
             if method != None:
@@ -821,7 +821,7 @@ class TagTypeHelper(object):
         typeElems.sort(key = lambda x: int( x.get("id") ))
         types = [None] + [TagType() for x in typeElems]
         
-        for i in xrange(1, len(types) ):
+        for i in range(1, len(types) ):
             typ = types[i]
             typeElem = typeElems[i - 1]
             
@@ -865,7 +865,7 @@ class TagXmlParser(object):
     def __init__(self, rootElem, types):
         self.types = types
         self.objectElems = list( rootElem.findall("object") )
-        self.objects = [None] + [TagObject(None, None) for x in xrange( len(self.objectElems) )]
+        self.objects = [None] + [TagObject(None, None) for x in range( len(self.objectElems) )]
         self.objectElems.sort(key = lambda x: self.parseObjId( x.get("id") ))
     
     @staticmethod
@@ -885,7 +885,7 @@ class TagXmlParser(object):
             
         name = name.replace("::", "")
     
-        for i in xrange( len(self.objectElems) ):    
+        for i in range( len(self.objectElems) ):    
             if self.objectElems[i].get("type") == name:
                 return self.parseObject(i + 1)
     
@@ -925,7 +925,7 @@ class TagXmlParser(object):
     
         elif typ.superType.subType == TagSubType.Int:
             if typ.superType.subTypeFlags & TagSubType.Int64:
-                value = long(text)
+                value = int(text)
             else:
                 value = int(text)
             
@@ -964,7 +964,7 @@ class TagXmlParser(object):
                 members["rotation"] = TagObject(floats[4:8], members["rotation"].typ)
                 members["scale"] = TagObject(floats[8:12], members["scale"].typ)
         
-            return TagObject({x:y for x, y in members.iteritems() if isinstance(y, TagObject)}, typ)
+            return TagObject({x:y for x, y in list(members.items()) if isinstance(y, TagObject)}, typ)
         
         elif typ.superType.subType & 0xF == TagSubType.Array:
             return self.parseArray(typ, elem)
@@ -977,7 +977,7 @@ class TagXmlParser(object):
             typ = self.findType( objElem.get("type") )
             
             if typ == None:    
-                print "WARNING: Type '{}' could not be found in the type database!".format( objElem.get("type") )
+                print(("WARNING: Type '{}' could not be found in the type database!".format( objElem.get("type") )))
                 return
         
             obj2 = self.parseValue(typ, objElem)
@@ -1003,8 +1003,8 @@ class TagXmlSerializer(object):
         
     @staticmethod
     def toFile(outputFileName, obj, backporter = None):
-        with open(outputFileName, "w") as f:
-            f.write('<?xml version="1.0" encoding="ascii"?>\n')
+        with open(outputFileName, "wb") as f:
+            f.write(b'<?xml version="1.0" encoding="ascii"?>\n')
             ET.ElementTree(TagXmlSerializer(backporter).serialize(obj)).write(f)
         
     def getIdString(self, index):
@@ -1080,7 +1080,7 @@ class TagXmlSerializer(object):
         index = 16 if obj.typ.superType.pointer.superType.byteSize == 1 else 8
         
         result = ""
-        for i in xrange( len(obj.value) ):
+        for i in range( len(obj.value) ):
             if not i % index:
                 result += "\n"
         
@@ -1120,7 +1120,7 @@ class TagXmlSerializer(object):
                 
                 else:
                     for member in typ.allMembers:
-                        if not member.flags & 1 and obj.value.has_key(member.name):
+                        if not member.flags & 1 and member.name in obj.value:
                             memberElem = self.serializeObject(elem, obj.value[member.name])
                             
                             if memberElem != None:
@@ -1267,7 +1267,7 @@ class TagXmlSerializer(object):
 
             self.getTypeName(typ)
             
-            if TagXmlSerializerSpecialTypeNames.has_key(typ.tag):
+            if typ.tag in TagXmlSerializerSpecialTypeNames:
                 specialName = TagXmlSerializerSpecialTypeNames[typ.tag]
                 
                 # Create Fake Type
@@ -1295,7 +1295,7 @@ class TagXmlSerializer(object):
         
         elif obj.typ.superType.subType == TagSubType.Class:
             for member in obj.typ.allMembers:
-                if obj.value.has_key(member.name):
+                if member.name in obj.value:
                     self.scanObjectForType(obj.value[member.name])
                     
         elif obj.typ.superType.subType & 0xF == TagSubType.Array:
@@ -1408,14 +1408,14 @@ def findFile(fileName, mandatory = True):
                 
 if __name__ == "__main__":
     if len(sys.argv) <= 1:
-        print "Tool for converting HKX (version <= 2012 2.0) files to 2016 1.0 tag binary files, and vice versa."
-        print "\nUsage: {} [source] [compendium] [destination]".format(os.path.basename(sys.argv[0]))
-        print "Compendium file is needed for files that contain no type info."
-        print "If no destination is included, the changes will be overwritten to the source."
-        print "You can do a simple drag and drop that way."
-        print "\nMade by Skyth."
-        print "Press enter to continue..."
-        raw_input()
+        print("Tool for converting HKX (version <= 2012 2.0) files to 2016 1.0 tag binary files, and vice versa.")
+        print(("\nUsage: {} [source] [compendium] [destination]".format(os.path.basename(sys.argv[0]))))
+        print("Compendium file is needed for files that contain no type info.")
+        print("If no destination is included, the changes will be overwritten to the source.")
+        print("You can do a simple drag and drop that way.")
+        print("\nMade by Skyth.")
+        print("Press enter to continue...")
+        eval(input())
     
     else:
         inputFileName = None
